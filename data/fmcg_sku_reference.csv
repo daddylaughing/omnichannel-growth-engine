@@ -1,0 +1,19 @@
+SKU_ID,Category,BasePrice,BaseDemand
+INS01,Instant Noodles,1.15,185
+INS02,Instant Noodles,1.42,183
+INS03,Instant Noodles,1.29,228
+INS04,Instant Noodles,1.38,215
+INS05,Instant Noodles,1.25,229
+RTD01,RTD Tea,1.32,176
+RTD02,RTD Tea,2.12,207
+RTD03,RTD Tea,1.98,184
+RTD04,RTD Tea,1.74,191
+RTD05,RTD Tea,1.55,127
+BOT01,Bottled Water,0.74,227
+BOT02,Bottled Water,1.16,160
+BOT03,Bottled Water,1.15,132
+BOT04,Bottled Water,1.01,205
+SNA01,Snacks,2.37,89
+SNA02,Snacks,2.53,133
+SNA03,Snacks,3.14,84
+SNA04,Snacks,2.58,130

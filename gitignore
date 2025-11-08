@@ -1,0 +1,49 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+*.so
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb~*
+
+# --- Virtual Environments / Conda ---
+env/
+venv/
+.venv/
+*.env
+*.conda
+*.yml
+
+# --- OS / Editor / Logs ---
+.DS_Store
+Thumbs.db
+*.log
+*.bak
+*.tmp
+*.swp
+
+# --- Data & Model Artifacts ---
+/data/*
+!/data/README.md
+/clean/*
+!/clean/README.md
+/models/
+/outputs/
+/reports/
+
+# --- Dash / Plotly Cache ---
+.cache/
+*.json
+
+# --- Presentation Artifacts ---
+/presentation/*.pdf
+/presentation/*.pptx
+
+# --- System & IDE files ---
+.vscode/
+.idea/
