@@ -1,275 +1,266 @@
-# app.py — Streamlit Power BI-style dashboard (clean version, no debug)
-# Run:  streamlit run app.py
+# app/app.py
+# Omnichannel Growth Engine – Streamlit Dashboard
+# Derrick Wong | NTUC LearningHub ADA (C36, 2025)
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 from pathlib import Path
+import plotly.express as px
+import plotly.graph_objects as go
 
-# ------------------ APP CONFIG ------------------
-st.set_page_config(page_title="Omnichannel Growth Engine", page_icon="📊", layout="wide")
-st.title("Omnichannel Growth Engine (Python Dashboard)")
-st.caption("Prepared by Derrick Wong | NTUC LearningHub Associate Data Analyst (Cohort 36), 2025")
+# -----------------------------
+# Paths & loaders
+# -----------------------------
+ROOT_DIR = Path(__file__).resolve().parents[1]
+CLEAN_DIR = ROOT_DIR / "clean"
 
-# ------------------ PATHS ------------------
-BASE_DIR = Path(__file__).resolve().parents[1]
-CLEAN_DIR = BASE_DIR / "clean"
 FACT_PATH = CLEAN_DIR / "cleaned_fmcg_omnichannel_sales.csv"
-CUST_SUMMARY_PATH = CLEAN_DIR / "fmcg_customer_repeat_summary_clean.csv"  # optional
+CUST_SUM_PATH = CLEAN_DIR / "fmcg_customer_repeat_summary_clean.csv"
+FORECAST_PATH = CLEAN_DIR / "forecast_channel_weekly.csv"  # <- Option A precomputed
 
-# ------------------ HELPERS ------------------
-def _normalize(col):
-    """lowercase + remove non-alnum for fuzzy matching."""
-    return "".join(ch for ch in col.strip().lower() if ch.isalnum())
+st.set_page_config(page_title="Omnichannel Growth Engine", layout="wide")
 
-CANDIDATES = {
-    "Date": ["date","orderdate","transactiondate","purchasedate","weekstart","week","weekof","weekbegin","weekstartdate"],
-    "Channel": ["channel","saleschannel","platform"],
-    "Territory": ["territory","region","area","zone"],
-    "Product_Category": ["productcategory","category","skucategory","prodcategory"],
-    "Promotion_Flag": ["promotionflag","promo","ispromo","onpromotion","promoflag","promotion"],
-    "Revenue": ["revenue","sales","amount","gmv","netsales","totalsales","netrevenue"],
-    "Quantity": ["quantity","units","qty","volume","qtty"],
-    "Order_ID": ["orderid","orderno","order_id","transactionid","txn"],
-    "Customer_ID": ["customerid","custid","buyerid","clientid"],
-    "Repeat_Frequency": ["repeatfrequency","repeats","orders","ordercount","repeatcount"]
-}
-
-def _auto_rename(df):
-    """Build rename map from fuzzy matches."""
-    rename = {}
-    norm_map = {c: _normalize(c) for c in df.columns}
-    for std, options in CANDIDATES.items():
-        hit = [c for c in df.columns if norm_map[c] in options]
-        if not hit and std == "Date":
-            for c in df.columns:
-                n = norm_map[c]
-                if ("date" in n) or ("week" in n):
-                    hit = [c]
-                    break
-        if not hit and std == "Revenue":
-            for c in df.columns:
-                n = norm_map[c]
-                if any(k in n for k in ["revenue","sales","amount","gmv"]):
-                    hit = [c]
-                    break
-        if hit:
-            rename[hit[0]] = std
-    return rename
-
-def _to_numeric(df, cols):
-    for c in cols:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-
-# ------------------ LOAD DATA ------------------
 @st.cache_data
-def load_data():
-    if not FACT_PATH.exists():
-        st.error(f"Missing file: {FACT_PATH}")
-        st.stop()
-    fact = pd.read_csv(FACT_PATH)
-    rename_map = _auto_rename(fact)
-    fact = fact.rename(columns=rename_map)
-
-    if "Date" not in fact.columns:
-        st.error("No date-like column found. Add a column like Date/OrderDate/WeekStart.")
-        st.stop()
-
-    fact["Date"] = pd.to_datetime(fact["Date"], errors="coerce")
-    if "Promotion_Flag" in fact.columns:
-        fact["Promotion_Flag"] = pd.to_numeric(fact["Promotion_Flag"], errors="coerce").fillna(0).astype(int)
-    _to_numeric(fact, ["Revenue","Quantity"])
-    fact = fact.dropna(subset=["Date"])
-
-    cust_summary = None
-    if CUST_SUMMARY_PATH.exists():
-        cust_summary = pd.read_csv(CUST_SUMMARY_PATH)
-        if "Last_Order_Date" in cust_summary.columns:
-            cust_summary["Last_Order_Date"] = pd.to_datetime(cust_summary["Last_Order_Date"], errors="coerce")
-
-    return fact, cust_summary, rename_map
-
-fact, cust_summary, auto_map = load_data()
-
-# ------------------ COLUMN OVERRIDES ------------------
-with st.sidebar.expander("Column overrides", expanded=True):
-    cols = list(fact.columns)
-    def pick(label, default_name):
-        idx = cols.index(default_name) if default_name in cols else 0
-        return st.selectbox(label, cols, index=idx)
-
-    date_col  = pick("Date column", "Date")
-    chan_col  = pick("Channel column", "Channel")
-    terr_col  = pick("Territory column", "Territory")
-    cat_col   = pick("Product Category column", "Product_Category")
-    promo_col = pick("Promotion Flag column", "Promotion_Flag")
-    rev_col   = pick("Revenue column", "Revenue")
-    qty_col   = pick("Quantity column", "Quantity")
-    cust_col  = pick("Customer ID column", "Customer_ID")
-    order_col = pick("Order ID column", "Order_ID")
-    synth = st.checkbox("If Customer_ID missing/blank, create synthetic Customer_ID", value=True)
-
-alias = {}
-if date_col  != "Date":             alias[date_col]  = "Date"
-if chan_col  != "Channel":          alias[chan_col]  = "Channel"
-if terr_col  != "Territory":        alias[terr_col]  = "Territory"
-if cat_col   != "Product_Category": alias[cat_col]   = "Product_Category"
-if promo_col != "Promotion_Flag":   alias[promo_col] = "Promotion_Flag"
-if rev_col   != "Revenue":          alias[rev_col]   = "Revenue"
-if qty_col   != "Quantity":         alias[qty_col]   = "Quantity"
-if cust_col  != "Customer_ID":      alias[cust_col]  = "Customer_ID"
-if order_col != "Order_ID":         alias[order_col] = "Order_ID"
-
-df = fact.rename(columns=alias).copy()
-df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-if "Promotion_Flag" in df.columns:
-    df["Promotion_Flag"] = pd.to_numeric(df["Promotion_Flag"], errors="coerce").fillna(0).astype(int)
-_to_numeric(df, ["Revenue","Quantity"])
-
-if ("Customer_ID" not in df.columns) or df["Customer_ID"].isna().all() or (df["Customer_ID"].astype(str).str.strip()=="").all():
-    if synth:
-        if "Order_ID" in df.columns:
-            df["Customer_ID"] = df["Order_ID"].astype(str)
-        else:
-            df["Customer_ID"] = df.index.astype(str)
-
-# ------------------ FILTERS ------------------
-st.sidebar.header("Filters")
-date_min, date_max = pd.to_datetime(df["Date"]).min(), pd.to_datetime(df["Date"]).max()
-date_range = st.sidebar.date_input("Date range", (date_min, date_max))
-
-def ms(label, name):
-    if name in df.columns:
-        vals = sorted([x for x in df[name].dropna().unique()])
-        return st.sidebar.multiselect(label, vals, default=vals)
-    return []
-
-channels   = ms("Channel", "Channel")
-territories= ms("Territory", "Territory")
-categories = ms("Product Category", "Product_Category")
-
-promo_choice = "All"
-if "Promotion_Flag" in df.columns:
-    promo_choice = st.sidebar.radio("Promotion", ["All","Promo only","Non-promo"])
-
-f = df[df["Date"].between(pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]))].copy()
-if channels:    f = f[f["Channel"].isin(channels)]
-if territories: f = f[f["Territory"].isin(territories)]
-if categories:  f = f[f["Product_Category"].isin(categories)]
-if "Promotion_Flag" in f.columns:
-    if promo_choice == "Promo only":  f = f[f["Promotion_Flag"] == 1]
-    elif promo_choice == "Non-promo": f = f[f["Promotion_Flag"] == 0]
-
-st.caption(f"Rows after filters: {len(f):,}")
-
-# ------------------ CUSTOMER SUMMARY ------------------
-def build_customer_summary(df_in):
-    if "Customer_ID" not in df_in.columns:
+def load_fact():
+    """Load the main clean fact table with flexible column detection."""
+    df0 = pd.read_csv(FACT_PATH)
+    # guess columns
+    def guess_date(cols):
+        for c in cols:
+            lc = c.lower()
+            if lc in {"date","orderdate","week","weekstart","week_start"} or "date" in lc or "week" in lc:
+                return c
         return None
-    if "Order_ID" in df_in.columns:
-        per_order = df_in.groupby(["Customer_ID","Order_ID"], as_index=False)["Revenue"].sum()
-        agg = per_order.groupby("Customer_ID").agg(
-            Orders=("Order_ID","nunique"),
-            Total_Revenue=("Revenue","sum")
-        ).reset_index()
-    else:
-        agg = df_in.groupby("Customer_ID").agg(
-            Orders=("Customer_ID","count"),
-            Total_Revenue=("Revenue","sum") if "Revenue" in df_in.columns else ("Customer_ID","count")
-        ).reset_index()
-    agg["AOV"] = agg["Total_Revenue"] / agg["Orders"].replace(0, np.nan)
-    agg["Repeat_Frequency"] = (agg["Orders"] - 1).clip(lower=0)
-    return agg
+    def guess(cols, exact, subs=None):
+        for c in cols:
+            if c.lower() in exact:
+                return c
+        if subs:
+            for c in cols:
+                if any(s in c.lower() for s in subs):
+                    return c
+        return None
 
-cust_f = build_customer_summary(f)
+    date_col = guess_date(df0.columns)
+    chan_col = guess(df0.columns, {"channel","platform","saleschannel"})
+    terr_col = guess(df0.columns, {"territory","region","area"})
+    cat_col  = guess(df0.columns, {"category","productcategory","sku_category"}, subs=["category"])
+    promo_col= guess(df0.columns, {"promo","promotion","is_promo","on_promo"})
+    rev_col  = guess(df0.columns, {"revenue","sales","amount","gmv","netsales"}, subs=["rev","sale","amount","gmv"])
 
-# ------------------ KPIs ------------------
-total_rev = f["Revenue"].sum() if "Revenue" in f.columns else np.nan
-orders = f["Order_ID"].nunique() if "Order_ID" in f.columns else len(f)
-aov = (total_rev / orders) if orders else np.nan
+    # minimal requirements
+    must = [date_col, chan_col, terr_col, cat_col, rev_col]
+    if any(m is None for m in must):
+        raise ValueError(f"Missing expected columns in {FACT_PATH}. Found: {list(df0.columns)}")
 
-repeat_pct = np.nan
-if cust_f is not None and len(cust_f):
-    total_cust = cust_f["Customer_ID"].nunique()
-    repeat_cust = (cust_f["Orders"] > 1).sum()
-    repeat_pct = (repeat_cust / total_cust) if total_cust else np.nan
+    df0[date_col] = pd.to_datetime(df0[date_col], errors="coerce")
+    if promo_col is None:
+        df0["Promo"] = False
+        promo_col = "Promo"
 
-promo_uplift = np.nan
-if {"Promotion_Flag","Revenue"}.issubset(f.columns):
-    promo_rev = f.loc[f["Promotion_Flag"]==1, "Revenue"].sum()
-    non_rev   = f.loc[f["Promotion_Flag"]==0, "Revenue"].sum()
-    promo_uplift = ((promo_rev / non_rev) - 1) if non_rev else np.nan
+    df = df0[[date_col, chan_col, terr_col, cat_col, promo_col, rev_col]].dropna()
+    df.columns = ["Date","Channel","Territory","Category","Promo","Revenue"]
+    # sensible types
+    df["Channel"]   = df["Channel"].astype("category")
+    df["Territory"] = df["Territory"].astype("category")
+    df["Category"]  = df["Category"].astype("category")
+    df["Promo"]     = df["Promo"].astype(bool)
+    df["Revenue"]   = pd.to_numeric(df["Revenue"], errors="coerce").fillna(0.0)
+    return df
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total Revenue", f"${total_rev:,.0f}" if pd.notna(total_rev) else "—")
-c2.metric("Average Order Value", f"${aov:,.2f}" if pd.notna(aov) else "—")
-c3.metric("Repeat Customers %", f"{repeat_pct*100:.1f}%" if pd.notna(repeat_pct) else "—")
-c4.metric("Promo Uplift", f"{promo_uplift*100:.1f}%" if pd.notna(promo_uplift) else "—")
+@st.cache_data
+def load_cust_summary():
+    if not CUST_SUM_PATH.exists():
+        return None
+    cs = pd.read_csv(CUST_SUM_PATH)
+    # try to standardize common headers
+    rename_map = {c.lower(): c for c in cs.columns}
+    # find columns
+    def pick(options, subs=None):
+        for c in cs.columns:
+            if c.lower() in options: return c
+        if subs:
+            for c in cs.columns:
+                if any(s in c.lower() for s in subs): return c
+        return None
+    cust_col = pick({"customer_id","customerid","cust_id"}, subs=["customer"])
+    orders_col = pick({"orders","order_count","repeat_count"}, subs=["order","purchase"])
+    rev_col = pick({"revenue","sales","amount","gmv"}, subs=["rev","sale","amount","gmv"])
 
-st.divider()
+    if cust_col: cs = cs.rename(columns={cust_col:"Customer_ID"})
+    if orders_col: cs = cs.rename(columns={orders_col:"Orders"})
+    if rev_col: cs = cs.rename(columns={rev_col:"Revenue"})
+    if "Orders" in cs.columns:
+        cs["Orders"] = pd.to_numeric(cs["Orders"], errors="coerce").fillna(0).astype(int)
+    if "Revenue" in cs.columns:
+        cs["Revenue"] = pd.to_numeric(cs["Revenue"], errors="coerce").fillna(0.0)
+    return cs
 
-# ------------------ TABS ------------------
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Channel & Territory", "Product & Promo", "Customers"])
+@st.cache_data
+def load_forecast():
+    """Load precomputed channel-weekly forecast if available."""
+    if FORECAST_PATH.exists():
+        fcast = pd.read_csv(FORECAST_PATH, parse_dates=["Date"])
+        # standardize expected cols
+        cols = {c.lower(): c for c in fcast.columns}
+        fcast = fcast.rename(columns={
+            cols.get("yhat","yhat"): "yhat",
+            cols.get("yhat_lower","yhat_lower"): "yhat_lower",
+            cols.get("yhat_upper","yhat_upper"): "yhat_upper",
+            cols.get("channel","Channel"): "Channel",
+        })
+        return fcast
+    return None
 
+# Load
+df = load_fact()
+cust = load_cust_summary()
+fcast = load_forecast()
+
+# -----------------------------
+# Sidebar filters
+# -----------------------------
+st.sidebar.header("Filters")
+min_date, max_date = df["Date"].min(), df["Date"].max()
+date_range = st.sidebar.date_input("Date range", (min_date, max_date))
+channels = st.sidebar.multiselect("Channel", sorted(df["Channel"].cat.categories.tolist()))
+territories = st.sidebar.multiselect("Territory", sorted(df["Territory"].cat.categories.tolist()))
+categories = st.sidebar.multiselect("Category", sorted(df["Category"].cat.categories.tolist()))
+promo_flag = st.sidebar.selectbox("Promo filter", ["All", "Promo only", "Non-promo"])
+
+# apply filters
+f = df.copy()
+if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+    f = f[(f["Date"] >= pd.to_datetime(date_range[0])) & (f["Date"] <= pd.to_datetime(date_range[1]))]
+if channels:   f = f[f["Channel"].isin(channels)]
+if territories:f = f[f["Territory"].isin(territories)]
+if categories: f = f[f["Category"].isin(categories)]
+if promo_flag == "Promo only": f = f[f["Promo"] == True]
+elif promo_flag == "Non-promo": f = f[f["Promo"] == False]
+
+# -----------------------------
+# KPIs
+# -----------------------------
+col1, col2, col3, col4 = st.columns(4)
+total_rev = f["Revenue"].sum()
+aov = f.groupby(pd.Grouper(key="Date", freq="W-MON"))["Revenue"].sum().mean()
+promo_uplift = None
+if "Promo" in f.columns and f["Promo"].nunique() > 1:
+    promo_avg = f[f["Promo"]==True]["Revenue"].mean()
+    non_avg   = f[f["Promo"]==False]["Revenue"].mean()
+    if non_avg and not np.isnan(non_avg):
+        promo_uplift = (promo_avg/non_avg - 1.0) * 100
+
+repeat_pct = None
+if cust is not None and {"Customer_ID","Orders"}.issubset(cust.columns):
+    total_c = len(cust)
+    repeat_c = (cust["Orders"] >= 2).sum()
+    if total_c > 0:
+        repeat_pct = 100 * repeat_c / total_c
+
+col1.metric("Total Revenue", f"${total_rev:,.0f}")
+col2.metric("Avg Weekly Revenue", f"${(0 if pd.isna(aov) else aov):,.0f}")
+col3.metric("Promo Uplift", f"{(0 if promo_uplift is None else promo_uplift):.1f}%")
+col4.metric("Repeat Customers", f"{(0 if repeat_pct is None else repeat_pct):.1f}%")
+
+st.markdown("---")
+
+# -----------------------------
+# Tabs
+# -----------------------------
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["Overview", "Channel & Territory", "Product & Promo", "Customers", "Forecast"]
+)
+
+# ---------------- Overview ----------------
 with tab1:
-    st.subheader("Weekly Revenue by Channel")
-    if {"Date","Channel","Revenue"}.issubset(f.columns):
-        weekly = f.groupby([pd.Grouper(key="Date", freq="W-MON"), "Channel"], as_index=False)["Revenue"].sum()
-        if len(weekly):
-            st.plotly_chart(px.line(weekly, x="Date", y="Revenue", color="Channel", markers=True), use_container_width=True)
-        else:
-            st.info("No data for selected filters.")
+    st.subheader("Channel Sales Trend (Weekly)")
+    ch_week = f.groupby([pd.Grouper(key="Date", freq="W-MON"), "Channel"])["Revenue"].sum().reset_index()
+    if len(ch_week) == 0:
+        st.info("No data for current filter.")
+    else:
+        fig = px.line(ch_week, x="Date", y="Revenue", color="Channel")
+        fig.update_layout(margin=dict(l=10,r=10,t=40,b=10))
+        st.plotly_chart(fig, use_container_width=True)
 
+# ------------- Channel & Territory --------
 with tab2:
-    colA, colB = st.columns(2)
-    with colA:
-        st.subheader("Revenue by Channel")
-        if {"Channel","Revenue"}.issubset(f.columns):
-            by_ch = f.groupby("Channel", as_index=False)["Revenue"].sum().sort_values("Revenue", ascending=False)
-            st.plotly_chart(px.bar(by_ch, x="Channel", y="Revenue", text_auto=".2s"), use_container_width=True)
-    with colB:
-        st.subheader("Revenue by Territory")
-        if {"Territory","Revenue"}.issubset(f.columns):
-            by_ter = f.groupby("Territory", as_index=False)["Revenue"].sum().sort_values("Revenue", ascending=False)
-            st.plotly_chart(px.bar(by_ter, x="Territory", y="Revenue", color="Territory", text_auto=".2s"), use_container_width=True)
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Territory Sales Leaderboard")
+        terr = f.groupby("Territory")["Revenue"].sum().reset_index().sort_values("Revenue", ascending=False)
+        st.plotly_chart(px.bar(terr, x="Revenue", y="Territory", orientation="h"), use_container_width=True)
+    with right:
+        st.subheader("Channel Mix")
+        ch_mix = f.groupby("Channel")["Revenue"].sum().reset_index()
+        st.plotly_chart(px.pie(ch_mix, names="Channel", values="Revenue", hole=0.35), use_container_width=True)
 
+# ------------- Product & Promo ------------
 with tab3:
-    colC, colD = st.columns(2)
-    with colC:
-        st.subheader("Revenue by Product Category")
-        if {"Product_Category","Revenue"}.issubset(f.columns):
-            by_cat = f.groupby("Product_Category", as_index=False)["Revenue"].sum().sort_values("Revenue", ascending=False)
-            st.plotly_chart(px.bar(by_cat, x="Product_Category", y="Revenue", color="Product_Category", text_auto=".2s"), use_container_width=True)
-    with colD:
-        st.subheader("Avg Order Revenue: Promo vs Non-Promo")
-        if {"Promotion_Flag","Revenue"}.issubset(f.columns):
-            if "Order_ID" in f.columns:
-                aro = (f.groupby(["Promotion_Flag","Order_ID"], as_index=False)["Revenue"].sum()
-                         .groupby("Promotion_Flag")["Revenue"].mean()
-                         .rename("Avg_Revenue_per_Order").reset_index())
-            else:
-                aro = (f.groupby("Promotion_Flag", as_index=False)["Revenue"].mean()
-                         .rename(columns={"Revenue":"Avg_Revenue_per_Order"}))
-            aro["Promo"] = aro["Promotion_Flag"].map({0:"Non-Promo",1:"Promo"})
-            st.plotly_chart(px.bar(aro, x="Promo", y="Avg_Revenue_per_Order", text_auto=".2s"), use_container_width=True)
-
-with tab4:
-    st.subheader("Customers — Revenue vs Orders (filtered)")
-    if cust_f is not None and len(cust_f):
-        fig = px.scatter(
-            cust_f, x="Orders", y="Total_Revenue",
-            size="AOV" if "AOV" in cust_f.columns else None,
-            hover_data=["Customer_ID"],
-            title="Customer Revenue vs Orders (size=AOV)"
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Category Contribution (Pareto)")
+        cat = f.groupby("Category")["Revenue"].sum().reset_index().sort_values("Revenue", ascending=False)
+        cat["cum_share"] = 100 * cat["Revenue"].cumsum() / cat["Revenue"].sum()
+        fig = go.Figure()
+        fig.add_bar(x=cat["Category"], y=cat["Revenue"], name="Revenue")
+        fig.add_trace(go.Scatter(x=cat["Category"], y=cat["cum_share"], yaxis="y2", name="Cum %"))
+        fig.update_layout(
+            yaxis2=dict(overlaying="y", side="right", range=[0,100], title="Cum %"),
+            margin=dict(l=10,r=10,t=40,b=10)
         )
         st.plotly_chart(fig, use_container_width=True)
-        topN = st.slider("Show top N customers by Total_Revenue", 5, 50, 10)
-        st.dataframe(
-            cust_f.sort_values("Total_Revenue", ascending=False)
-                  .head(topN)
-                  .reset_index(drop=True)
-        )
+    with right:
+        st.subheader("Promo vs Non-Promo – Average Revenue")
+        g = f.groupby("Promo")["Revenue"].mean().reset_index()
+        g["Promo"] = g["Promo"].map({True:"Promo", False:"Non-Promo"})
+        st.plotly_chart(px.bar(g, x="Promo", y="Revenue"), use_container_width=True)
+
+# ---------------- Customers ----------------
+with tab4:
+    st.subheader("Revenue vs Orders (Customer Segments)")
+    if cust is None or not {"Customer_ID","Orders","Revenue"}.issubset(cust.columns):
+        st.info("Customer summary file not found or missing columns.")
     else:
-        st.info("No customers available — set Customer ID in 'Column overrides' or enable synthetic option.")
+        fig = px.scatter(cust, x="Orders", y="Revenue", opacity=0.4, trendline="ols", labels={"Orders":"Orders per Customer"})
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Tip: top-right cluster = high-value frequent buyers. Use CRM journeys to retain them.")
+
+# ---------------- Forecast -----------------
+with tab5:
+    st.subheader("Channel Demand Forecast (next 8 weeks)")
+    if fcast is None or fcast.empty:
+        st.info("No forecast file found. Add clean/forecast_channel_weekly.csv to enable this tab.")
+    else:
+        # respect channel filter
+        fc = fcast.copy()
+        if "Channel" in fc.columns and channels:
+            fc = fc[fc["Channel"].isin(channels)]
+        ch_list = sorted(fc["Channel"].dropna().unique())
+        if not ch_list:
+            st.info("No channels available for current filters.")
+        else:
+            ch_pick = st.selectbox("Channel", ch_list, key="fc_channel")
+            fc1 = fc[fc["Channel"] == ch_pick].sort_values("Date")
+
+            fig = go.Figure()
+            # history line from filtered fact
+            hist = (f[f["Channel"] == ch_pick]
+                    .groupby(pd.Grouper(key="Date", freq="W-MON"))["Revenue"]
+                    .sum().reset_index())
+            if len(hist):
+                fig.add_trace(go.Scatter(x=hist["Date"], y=hist["Revenue"], name="Actual", mode="lines+markers"))
+
+            if {"yhat","yhat_lower","yhat_upper"}.issubset(fc1.columns):
+                fig.add_trace(go.Scatter(x=fc1["Date"], y=fc1["yhat"], name="Forecast", mode="lines"))
+                fig.add_trace(go.Scatter(
+                    x=pd.concat([fc1["Date"], fc1["Date"][::-1]]),
+                    y=pd.concat([fc1["yhat_upper"], fc1["yhat_lower"][::-1]]),
+                    fill="toself", name="Confidence", mode="lines", line=dict(width=0), opacity=0.15
+                ))
+            fig.update_layout(margin=dict(l=10,r=10,t=40,b=10))
+            st.plotly_chart(fig, use_container_width=True)
+
+# footer
+st.caption("Prepared by Derrick Wong | Graduate NTUC LearningHub Associate Data Analyst (Cohort 36) 2025")
