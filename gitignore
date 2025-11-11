@@ -47,3 +47,8 @@ Thumbs.db
 # --- System & IDE files ---
 .vscode/
 .idea/
+
+# block Windows reserved device names if they appeared from a zip
+NUL
+NUL/
+

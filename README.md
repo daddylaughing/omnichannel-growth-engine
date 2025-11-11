@@ -75,13 +75,23 @@ omnichannel-growth-engine/
 
 ---
 
-## 💻 Dashboard Preview (Power BI–Style)
-![Dashboard Preview](presentation/dashboard_overview.png)
-![Territory Performance](presentation/territory_chart.png)
-![Promo Uplift](presentation/promo_uplift.png)
+## 💻 Dashboard Preview (Streamlit Power BI–Style)
 
-> Interactive dashboard built with Plotly/Dash, styled in red–gold theme inspired by 康师傅 brand identity.
+![Dashboard Overview](presentation/dashboard_overview.png)
+![Channel Performance](presentation/channel_chart.png)
+![Customer Insights](presentation/customer_tab.png)
 
+> Interactive **Streamlit dashboard** built with Python and Plotly — styled in red–gold theme inspired by 康师傅 brand identity.
+
+---
+
+## 🌐 Live Dashboard Access
+
+Once deployed via **Streamlit Community Cloud**, the dashboard will be accessible publicly:
+
+[![View Dashboard](https://img.shields.io/badge/Streamlit-Live_App-red?logo=streamlit)](https://daddylaughing-omnichannel-growth-engine.streamlit.app)
+
+📦 **Deployment Path**
 ---
 
 ## 🧠 Learning Highlights

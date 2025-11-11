@@ -1,0 +1,95 @@
+────────────────────────────────────────────
+Project: Building the Omnichannel Growth Engine
+Capstone: NTUC LearningHub – Associate Data Analyst Course (Cohort 36, 2025)
+Author: Derrick Wong
+────────────────────────────────────────────
+
+1️⃣ DATASET OVERVIEW
+────────────────────────────────────────────
+The capstone simulates a realistic FMCG (Fast-Moving Consumer Goods) omnichannel sales environment for 康师傅 Singapore.
+
+The project integrates three cleaned datasets:
+- A main fact table (sales transactions)
+- Two dimension tables (SKU reference and Customer summary)
+
+These datasets were originally mock/synthetic but structured to mirror real commercial data models for sales, promotions, and customer behaviour.
+
+────────────────────────────────────────────
+
+2️⃣ DATA FILES
+────────────────────────────────────────────
+📁 clean/cleaned_fmcg_omnichannel_sales.csv
+────────────────────────────────────────────
+• Purpose: Main transaction-level fact table used for analysis, modelling, and Power BI dashboard.
+• Record count: ~6 months of weekly data (~5,000–10,000 rows, depending on simulation).
+• Granularity: Each record = one SKU/channel/territory/week combination.
+• Key fields:
+    - Date → Transaction week start date
+    - Channel → Retail / Shopee / Lazada / D2C
+    - Territory → North / East / West / Central Singapore
+    - Product_Category → SKU-level grouping
+    - Promotion_Flag → 1 if under promotion, 0 otherwise
+    - Revenue → Total sales revenue for the period
+    - Quantity → Total units sold
+    - Order_ID → Transaction identifier
+    - Customer_ID → Linked to customer dimension
+
+────────────────────────────────────────────
+📁 clean/fmcg_sku_reference_clean.csv
+────────────────────────────────────────────
+• Purpose: Product dimension table (SKU master) used for lookups and category segmentation.
+• Key fields:
+    - SKU_ID → Primary key, unique product identifier
+    - Product_Name → Full product name
+    - Product_Category → Standardized product category
+    - Brand → Brand group
+    - Unit_Price → Average selling price per SKU
+    - Pack_Size → Optional descriptor
+
+────────────────────────────────────────────
+📁 clean/fmcg_customer_repeat_summary_clean.csv
+────────────────────────────────────────────
+• Purpose: Customer dimension table summarizing purchasing behaviour.
+• Key fields:
+    - Customer_ID → Primary key
+    - Orders → Total number of distinct orders
+    - Total_Revenue → Lifetime spend
+    - Repeat_Frequency → Number of repeat purchases
+    - Last_Order_Date → Last recorded purchase date
+    - AOV → Average Order Value = Total_Revenue / Orders
+
+────────────────────────────────────────────
+
+3️⃣ DATA RELATIONSHIPS (Power BI Model)
+────────────────────────────────────────────
+• Fact table → Dimension joins:
+    - Fact[SKU_ID] → SKU[SKU_ID]
+    - Fact[Customer_ID] → Customer[Customer_ID]
+• Date column is linked to a generated Date table for time intelligence.
+• Relationships: Many-to-One, single direction (from dimension → fact)
+
+────────────────────────────────────────────
+
+4️⃣ DATA USAGE SUMMARY
+────────────────────────────────────────────
+| Stage | Purpose |
+|--------|----------|
+| Data Cleaning | Python (Jupyter) – outlier removal, null handling, normalization |
+| Exploratory Analysis | Python – trend charts, promo uplift, territory leaderboard |
+| Predictive Modelling | Python – ARIMA/Prophet forecasts, K-Means segmentation, Logistic Regression |
+| Visualization | Power BI – KPI dashboard, promo analysis, customer insights |
+| Business Storytelling | PowerPoint & GitHub README – narrative and recommendations |
+
+────────────────────────────────────────────
+
+5️⃣ NOTES
+────────────────────────────────────────────
+• All datasets are synthetic mock data built for educational demonstration.
+• No proprietary or confidential information is used.
+• All field names, metrics, and trends are designed to emulate a realistic FMCG environment.
+────────────────────────────────────────────
+
+Prepared by:
+Derrick Wong
+Graduate, NTUC LearningHub – Associate Data Analyst Course (Cohort 36, 2025)
+Singapore

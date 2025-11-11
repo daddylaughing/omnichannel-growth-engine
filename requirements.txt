@@ -1,8 +1,6 @@
 # Core data & visualization
 pandas==2.2.2
 numpy==1.26.4
-matplotlib==3.9.0
-seaborn==0.13.2
 plotly==5.24.1
 
 # Machine learning & modeling
@@ -11,8 +9,10 @@ statsmodels==0.14.2
 prophet==1.1.5
 
 # Dashboard framework
-dash==2.17.0
+streamlit==1.39.0
 
-# Optional: for notebooks & environment
+# Optional: for notebooks
+matplotlib==3.9.0
+seaborn==0.13.2
 jupyter==1.1.1
 notebook==7.1.3
