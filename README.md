@@ -3,8 +3,7 @@
 Prepared by **Derrick Wong** | Graduate, NTUC LearningHub Associate Data Analyst Course (Cohort 36, 2025)
 
 ---
-
-![Project Banner](presentation/dashboard_preview.png)
+![Dashboard Banner](Presentation/dashboard_preview.png)
 
 ## 🚀 Executive Summary
 This project demonstrates a complete end-to-end **data analytics solution** for the FMCG sector — simulating how **康师傅 Singapore** can leverage omnichannel insights (Retail, Shopee, Lazada, D2C) to accelerate sales growth and customer engagement.
