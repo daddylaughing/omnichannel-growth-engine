@@ -223,11 +223,34 @@ with tab4:
     if cust is None or not {"Customer_ID","Orders","Revenue"}.issubset(cust.columns):
         st.info("Customer summary file not found or missing columns.")
     else:
-        fig = px.scatter(cust, x="Orders", y="Revenue", opacity=0.4, trendline="ols", labels={"Orders":"Orders per Customer"})
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Tip: top-right cluster = high-value frequent buyers. Use CRM journeys to retain them.")
+        # Base scatter
+        fig = px.scatter(
+            cust, x="Orders", y="Revenue",
+            opacity=0.45, labels={"Orders":"Orders per Customer"},
+            hover_data=["Customer_ID"]
+        )
 
-# ---------------- Forecast -----------------
+        # Optional lightweight best-fit (no statsmodels)
+        try:
+            x = cust["Orders"].to_numpy(dtype=float)
+            y = cust["Revenue"].to_numpy(dtype=float)
+            if len(cust) >= 3 and np.isfinite(x).all() and np.isfinite(y).all():
+                m, b = np.polyfit(x, y, 1)  # slope, intercept
+                xline = np.linspace(x.min(), x.max(), 100)
+                yline = m * xline + b
+                fig.add_traces([
+                    go.Scatter(x=xline, y=yline, mode="lines", name="Best-fit (polyfit)", line=dict(width=2))
+                ])
+        except Exception:
+            pass
+
+        # Reference medians
+        med_rev = float(np.nanmedian(cust["Revenue"]))
+        fig.add_hline(y=med_rev, line_dash="dot", annotation_text=f"Median Rev: {med_rev:,.0f}")
+
+        fig.update_layout(margin=dict(l=10, r=10, t=40, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Top-right cluster = high-value frequent buyers. Build CRM journeys to retain them.")
 with tab5:
     st.subheader("Channel Demand Forecast (next 8 weeks)")
     if fcast is None or fcast.empty:
