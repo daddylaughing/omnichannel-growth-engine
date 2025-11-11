@@ -74,6 +74,21 @@ omnichannel-growth-engine/
 
 ---
 
+### 💻 Developer vs Cloud Environments
+
+This project runs in two setups:
+
+| Environment | File | Description |
+|--------------|------|-------------|
+| **Cloud / Recruiter View** | `requirements.txt` | Lightweight setup for Streamlit Cloud (fast deploy) |
+| **Local / Full Analytics** | `requirements_dev.txt` | Full environment for Prophet, Scikit-learn, Jupyter & analysis notebooks |
+
+To install locally with full functionality:
+```bash
+pip install -r requirements_dev.txt
+
+---
+
 ## 💻 Dashboard Preview (Streamlit Power BI–Style)
 
 ![Dashboard Overview](presentation/dashboard_overview.png)
