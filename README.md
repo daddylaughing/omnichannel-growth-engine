@@ -6,6 +6,13 @@ Prepared by **Derrick Wong** | Graduate, NTUC LearningHub Associate Data Analyst
 ![Dashboard Banner](Presentation/dashboard_preview.png)
 
 ---
+## 🌐 Live Demo
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://omnichannel-growth-engine-b3mqptt73h9dbe4scq4akd.streamlit.app/p)
+
+> Click the badge to launch the live interactive dashboard hosted on Streamlit Cloud.
+---
+
 
 ## 🧭 Problem Statement
 
