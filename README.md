@@ -5,6 +5,17 @@ Prepared by **Derrick Wong** | Graduate, NTUC LearningHub Associate Data Analyst
 ---
 ![Dashboard Banner](Presentation/dashboard_preview.png)
 
+---
+
+## 🧭 Problem Statement
+
+In Singapore's fast-moving consumer goods (FMCG) market, retail and online channels operate in silos — leading to fragmented visibility and poor forecasting accuracy.  
+To sustain growth, **康师傅 Singapore** must integrate omnichannel sales data, uncover channel patterns, and predict demand fluctuations to optimize promotions and inventory.  
+
+This project aims to bridge that gap by transforming raw retail and e-commerce data into actionable insights for better channel strategy and forecasting accuracy.
+
+---
+
 ## 🚀 Executive Summary
 This project demonstrates a complete end-to-end **data analytics solution** for the FMCG sector — simulating how **康师傅 Singapore** can leverage omnichannel insights (Retail, Shopee, Lazada, D2C) to accelerate sales growth and customer engagement.
 
@@ -39,6 +50,7 @@ omnichannel-growth-engine/
 
 ---
 
+
 ## 📊 What Each Notebook Does
 
 | Notebook | Purpose | Output |
@@ -54,14 +66,15 @@ omnichannel-growth-engine/
 **Programming & Analytics**
 - Python 3.10+  
 - Pandas, NumPy, Matplotlib, Seaborn  
-- Plotly, Dash (for BI-style visuals)  
+- Plotly, Streamlit  
 - Prophet / Statsmodels (ARIMA)  
 - Scikit-learn (K-Means, Logistic Regression)
 
 **Data & Platform**
 - Jupyter Notebooks  
 - Anaconda Environment  
-- Mock FMCG Dataset (6 months of omnichannel sales)  
+- Mock FMCG Dataset (6 months of omnichannel sales) 
+- Streamlit for hosting my Dasboard
 
 ---
 
@@ -115,6 +128,20 @@ Once deployed via **Streamlit Community Cloud**, the dashboard will be accessibl
 
 ---
 
+## 🗓️ Timeline Alignment (Capstone C36)
+| Day | Task | Deliverable |
+|-----|------|--------------|
+| D1 | Kickoff & Scoping | Problem Statement + Dataset link |
+| D2 | Data Preparation | `.info()` / clean snapshot |
+| D3 | EDA | Key visuals + insights |
+| D4 | Model Dev | Prophet forecast draft |
+| D5 | Evaluation | Metrics summary |
+| D6 | Storytelling | Report narrative |
+| D7 | Final Submission | Complete ZIP + README |
+| D8 | Presentation | Live 10–12 min demo |
+
+---
+
 ## 📦 Deliverables
 | Deliverable | Format | Description |
 |--------------|---------|-------------|
@@ -123,6 +150,13 @@ Once deployed via **Streamlit Community Cloud**, the dashboard will be accessibl
 | Executive Deck | `.pptx` | Slide deck for management presentation |
 | Dashboard | `.ipynb` / Dash app | Interactive Plotly-based analytics dashboard |
 | Documentation | `.md` | GitHub README (this file) |
+
+---
+
+## 🏁 Conclusion
+
+This capstone project delivers a comprehensive analytical engine to simulate real-world decision-making for omnichannel growth.  
+By unifying retail and e-commerce datasets and embedding predictive intelligence, **康师傅 Singapore** can make faster, smarter, and more data-driven sales decisions.
 
 ---
 
@@ -137,3 +171,5 @@ Graduate, NTUC LearningHub – Associate Data Analyst Course (Cohort 36, 2025)
 
 > “Data tells stories — analytics turns them into strategy.” ✨  
 > *— Derrick Wong*
+
+---
