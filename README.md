@@ -11,7 +11,7 @@ Prepared by **Derrick Wong** | Graduate, NTUC LearningHub Associate Data Analyst
 ---
 ## 🌐 Live Demo
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://omnichannel-growth-engine.streamlit.app)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://omnichannel-growth-engine-b3mqptt73h9dbe4scq4akd.streamlit.app/)
 
 > Click the badge to launch the live interactive dashboard hosted on Streamlit Cloud.
 ---
