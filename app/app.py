@@ -1,503 +1,525 @@
-# app/app.py — Multi-Tab Omnichannel FMCG Dashboard
-# Derrick Wong | Omnichannel Growth Engine (Capstone 2025)
+# app/app.py — Omnichannel FMCG Dashboard (Multi-tab)
+# Prepared for Derrick Wong | NTUC LearningHub ADA Capstone 2025
 
-import streamlit as st
-import pandas as pd
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
-# -----------------------
-# Page config & paths
-# -----------------------
-st.set_page_config(page_title="Omnichannel FMCG Dashboard", layout="wide")
 
+# ----------------------------------------------------
+# Page config
+# ----------------------------------------------------
+st.set_page_config(
+    page_title="Omnichannel FMCG Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+# ----------------------------------------------------
+# Paths & data loading helpers
+# ----------------------------------------------------
 ROOT = Path(__file__).resolve().parents[1]
 CLEAN = ROOT / "clean"
+DATA_CANDIDATES = [
+    CLEAN / "cleaned_fmcg_omnichannel_sales.csv",
+    ROOT / "cleaned_fmcg_omnichannel_sales.csv",
+]
 
-FACT_PATH = CLEAN / "cleaned_fmcg_omnichannel_sales.csv"
-CUST_PATH = CLEAN / "fmcg_customer_repeat_summary_clean.csv"
-FORE_PATH = CLEAN / "forecast_channel_weekly.csv"  # optional
+CUST_CANDIDATES = [
+    CLEAN / "fmcg_customer_repeat_summary_clean.csv",
+    ROOT / "fmcg_customer_repeat_summary_clean.csv",
+    CLEAN / "fmcg_customer_repeat_summary.csv",
+    ROOT / "fmcg_customer_repeat_summary.csv",
+]
 
-# -----------------------
-# Lightweight SG territory polygons
-# (approximate regions for North / East / West / Central)
-# -----------------------
-SG_TERRITORY_GEOJSON = {
-    "type": "FeatureCollection",
-    "features": [
-        {   # West
-            "type": "Feature",
-            "properties": {"Territory": "West"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[
-                    [103.60, 1.23],
-                    [103.76, 1.23],
-                    [103.76, 1.37],
-                    [103.60, 1.37],
-                    [103.60, 1.23],
-                ]],
-            },
-        },
-        {   # Central
-            "type": "Feature",
-            "properties": {"Territory": "Central"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[
-                    [103.76, 1.26],
-                    [103.88, 1.26],
-                    [103.88, 1.38],
-                    [103.76, 1.38],
-                    [103.76, 1.26],
-                ]],
-            },
-        },
-        {   # East
-            "type": "Feature",
-            "properties": {"Territory": "East"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[
-                    [103.88, 1.25],
-                    [104.02, 1.25],
-                    [104.02, 1.37],
-                    [103.88, 1.37],
-                    [103.88, 1.25],
-                ]],
-            },
-        },
-        {   # North
-            "type": "Feature",
-            "properties": {"Territory": "North"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[
-                    [103.70, 1.37],
-                    [103.96, 1.37],
-                    [103.96, 1.47],
-                    [103.70, 1.47],
-                    [103.70, 1.37],
-                ]],
-            },
-        },
-    ],
-}
+SKU_CANDIDATES = [
+    CLEAN / "fmcg_sku_reference_clean.csv",
+    ROOT / "fmcg_sku_reference_clean.csv",
+    CLEAN / "fmcg_sku_reference.csv",
+    ROOT / "fmcg_sku_reference.csv",
+]
 
-# -----------------------
-# Data loaders
-# -----------------------
-@st.cache_data
-def load_fact():
-    df0 = pd.read_csv(FACT_PATH)
 
-    # helper to guess columns even if names change a bit
-    def pick(cols, exact, subs=None):
-        for c in cols:
-            if c.lower() in exact:
-                return c
-        if subs:
-            for c in cols:
-                if any(s in c.lower() for s in subs):
-                    return c
-        return None
+def _first_existing(paths):
+    for p in paths:
+        if p.exists():
+            return p
+    return None
 
-    def pick_date(cols):
-        for c in cols:
-            lc = c.lower()
-            if (
-                lc in {"date", "orderdate", "week", "weekstart", "week_start"}
-                or "date" in lc
-                or "week" in lc
-            ):
-                return c
-        return None
 
-    date = pick_date(df0.columns)
-    ch = pick(df0.columns, {"channel", "platform", "saleschannel"})
-    terr = pick(df0.columns, {"territory", "region", "area"})
-    cat = pick(df0.columns, {"category", "productcategory", "sku_category"}, subs=["category"])
-    promo = pick(df0.columns, {"promo", "promotion", "is_promo", "on_promo"})
-    rev = pick(
-        df0.columns,
-        {"revenue", "sales", "amount", "gmv", "netsales"},
-        subs=["rev", "sale", "amount", "gmv"],
-    )
+@st.cache_data(show_spinner=False)
+def load_fact() -> pd.DataFrame:
+    """Load main fact table and normalise columns."""
+    src = _first_existing(DATA_CANDIDATES)
+    if src is None:
+        st.error("Could not find cleaned_fmcg_omnichannel_sales.csv")
+        st.stop()
 
-    if any(c is None for c in [date, ch, terr, cat, rev]):
-        raise ValueError("Missing key columns in fact CSV")
+    df = pd.read_csv(src)
 
-    df0[date] = pd.to_datetime(df0[date], errors="coerce")
-    if promo is None:
-        df0["Promo"] = False
-        promo = "Promo"
+    # Standardise column names
+    cols = {c.lower(): c for c in df.columns}
+    # Date column
+    if "week_start" in cols:
+        date_col = cols["week_start"]
+    elif "date" in cols:
+        date_col = cols["date"]
+    else:
+        raise ValueError("Could not find a date column (Week_Start / Date)")
 
-    df = df0[[date, ch, terr, cat, promo, rev]].dropna()
-    df.columns = ["Date", "Channel", "Territory", "Category", "Promo", "Revenue"]
-    df["Promo"] = df["Promo"].astype(bool)
-    df["Channel"] = df["Channel"].astype(str)
-    df["Territory"] = df["Territory"].astype(str)
-    df["Category"] = df["Category"].astype(str)
-    df["Revenue"] = pd.to_numeric(df["Revenue"], errors="coerce").fillna(0.0)
+    df.rename(columns={date_col: "Date"}, inplace=True)
+    df["Date"] = pd.to_datetime(df["Date"])
+
+    # Other key columns
+    rename_map = {}
+    for src_name, std in [
+        ("territory", "Territory"),
+        ("channel", "Channel"),
+        ("category", "Category"),
+        ("sku_id", "SKU_ID"),
+        ("customer_id", "Customer_ID"),
+    ]:
+        for c in df.columns:
+            if c.lower() == src_name:
+                rename_map[c] = std
+    if rename_map:
+        df.rename(columns=rename_map, inplace=True)
+
+    # Revenue / units
+    if "Revenue" not in df.columns:
+        # try to construct
+        rev = None
+        price_col = next((c for c in df.columns if c.lower() == "unit_price"), None)
+        units_col = next((c for c in df.columns if c.lower() in ("units", "quantity")), None)
+        if price_col and units_col:
+            rev = df[price_col] * df[units_col]
+        if rev is None:
+            raise ValueError("No Revenue column and could not infer from Unit_Price x Units")
+        df["Revenue"] = rev
+
+    if "Units" not in df.columns:
+        units_col = next((c for c in df.columns if c.lower() in ("units", "quantity")), None)
+        if units_col:
+            df.rename(columns={units_col: "Units"}, inplace=True)
+
+    # Promo flag -> boolean
+    promo_col = None
+    for c in df.columns:
+        if c.lower() in ("promo_flag", "promo", "is_promo"):
+            promo_col = c
+            break
+    if promo_col is not None:
+        df["Promo"] = df[promo_col].astype(int).astype(bool)
+    else:
+        df["Promo"] = False
+
+    # Orders_6m proxy for repeat behaviour
+    orders_col = next((c for c in df.columns if c.lower() in ("orders_6m", "orders6m", "order_count")), None)
+    if orders_col and orders_col != "Orders_6m":
+        df.rename(columns={orders_col: "Orders_6m"}, inplace=True)
 
     return df
 
 
-@st.cache_data
-def load_customers():
-    if not CUST_PATH.exists():
+@st.cache_data(show_spinner=False)
+def load_customers():  # returns DataFrame or None
+    src = _first_existing(CUST_CANDIDATES)
+    if src is None:
         return None
-    c = pd.read_csv(CUST_PATH)
+    df = pd.read_csv(src)
+    # normalise
+    if "Customer_ID" not in df.columns:
+        for c in df.columns:
+            if c.lower() == "customer_id":
+                df.rename(columns={c: "Customer_ID"}, inplace=True)
+                break
+    return df
 
-    def pick(options, subs=None):
-        for col in c.columns:
-            if col.lower() in options:
-                return col
-        if subs:
-            for col in c.columns:
-                if any(s in col.lower() for s in subs):
-                    return col
+
+@st.cache_data(show_spinner=False)
+def load_sku():  # returns DataFrame or None
+    src = _first_existing(SKU_CANDIDATES)
+    if src is None:
         return None
-
-    cid = pick({"customer_id", "customerid", "cust_id"}, subs=["customer"])
-    orders = pick({"orders", "order_count", "repeat_count"}, subs=["order", "purchase"])
-    rev = pick({"revenue", "sales", "amount", "gmv"}, subs=["rev", "sale", "amount", "gmv"])
-
-    if cid:
-        c = c.rename(columns={cid: "Customer_ID"})
-    if orders:
-        c = c.rename(columns={orders: "Orders"})
-    if rev:
-        c = c.rename(columns={rev: "Revenue"})
-
-    if "Orders" in c.columns:
-        c["Orders"] = pd.to_numeric(c["Orders"], errors="coerce").fillna(0).astype(int)
-    if "Revenue" in c.columns:
-        c["Revenue"] = pd.to_numeric(c["Revenue"], errors="coerce").fillna(0.0)
-
-    return c
+    df = pd.read_csv(src)
+    if "SKU_ID" not in df.columns:
+        for c in df.columns:
+            if c.lower() == "sku_id":
+                df.rename(columns={c: "SKU_ID"}, inplace=True)
+                break
+    return df
 
 
-@st.cache_data
-def load_forecast():
-    if FORE_PATH.exists():
-        f = pd.read_csv(FORE_PATH, parse_dates=["Date"])
-        if "Channel" not in f.columns and "channel" in f.columns:
-            f = f.rename(columns={"channel": "Channel"})
-        return f[["Date", "Channel", "yhat", "yhat_lower", "yhat_upper"]]
-    return None
+@st.cache_data(show_spinner=False)
+def build_forecast(df: pd.DataFrame) -> pd.DataFrame:
+    """Simple moving-average forecast per channel (no external libs needed)."""
+    # aggregate weekly revenue by channel
+    wk = (
+        df.groupby(["Date", "Channel"], as_index=False)["Revenue"]
+        .sum()
+        .sort_values("Date")
+    )
+    # 4-week moving average forecast shifted forward
+    forecasts = []
+    for ch, ch_df in wk.groupby("Channel"):
+        ch_df = ch_df.sort_values("Date").copy()
+        ch_df["yhat"] = ch_df["Revenue"].rolling(window=4, min_periods=2).mean().shift(1)
+        ch_df["yhat_lower"] = ch_df["yhat"] * 0.9
+        ch_df["yhat_upper"] = ch_df["yhat"] * 1.1
+        ch_df["Channel"] = ch
+        forecasts.append(ch_df)
+    fc = pd.concat(forecasts, ignore_index=True)
+    return fc.dropna(subset=["yhat"])
 
 
-# Load data
 fact = load_fact()
 cust = load_customers()
-fcast = load_forecast()
+sku_ref = load_sku()
+fcast = build_forecast(fact)
 
-# -----------------------
-# Sidebar – global filters
-# -----------------------
+
+# ----------------------------------------------------
+# Sidebar filters
+# ----------------------------------------------------
 with st.sidebar:
     st.header("Filters")
 
-    dmin, dmax = fact["Date"].min(), fact["Date"].max()
-    date_range = st.date_input("Date Range", (dmin, dmax))
+    min_date = fact["Date"].min()
+    max_date = fact["Date"].max()
 
-    channels = st.multiselect("Channel", sorted(fact["Channel"].unique()))
-    territories = st.multiselect("Territory", sorted(fact["Territory"].unique()))
-    categories = st.multiselect("Category", sorted(fact["Category"].unique()))
-    pflag = st.selectbox("Promo Flag", ["All", "Promo only", "Non-promo"])
+    date_range = st.date_input(
+        "Date Range",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date,
+    )
+
+    ch_all = ["All"] + sorted(fact["Channel"].dropna().unique().tolist())
+    channel_sel = st.selectbox("Channel", ch_all)
+
+    terr_all = ["All"] + sorted(fact["Territory"].dropna().unique().tolist())
+    territory_sel = st.selectbox("Territory", terr_all)
+
+    cat_all = ["All"] + sorted(fact["Category"].dropna().unique().tolist())
+    category_sel = st.selectbox("Category", cat_all)
+
+    promo_opt = ["All", "Promo Only", "Non-Promo Only"]
+    promo_sel = st.selectbox("Promo Flag", promo_opt)
+
 
 # Apply filters
 f = fact.copy()
-if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
-    f = f[
-        (f["Date"] >= pd.to_datetime(date_range[0]))
-        & (f["Date"] <= pd.to_datetime(date_range[1]))
-    ]
-if channels:
-    f = f[f["Channel"].isin(channels)]
-if territories:
-    f = f[f["Territory"].isin(territories)]
-if categories:
-    f = f[f["Category"].isin(categories)]
-if pflag == "Promo only":
-    f = f[f["Promo"] is True]
-elif pflag == "Non-promo":
-    f = f[f["Promo"] is False]
+start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+f = f[(f["Date"] >= start) & (f["Date"] <= end)]
 
-# -----------------------
-# Tabs
-# -----------------------
+if channel_sel != "All":
+    f = f[f["Channel"] == channel_sel]
+if territory_sel != "All":
+    f = f[f["Territory"] == territory_sel]
+if category_sel != "All":
+    f = f[f["Category"] == category_sel]
+if promo_sel == "Promo Only":
+    f = f[f["Promo"]]
+elif promo_sel == "Non-Promo Only":
+    f = f[~f["Promo"]]
+
+if f.empty:
+    st.warning("No data for the current filter selection. Please adjust the filters.")
+    st.stop()
+
+
+# ----------------------------------------------------
+# Helper metrics
+# ----------------------------------------------------
+def compute_promo_effectiveness(df: pd.DataFrame):
+    g = df.groupby("Promo")["Revenue"].mean()
+    if True in g.index and False in g.index and g[False] > 0:
+        return (g[True] / g[False] - 1.0) * 100.0
+    return None
+
+
+def compute_repeat_rate(df: pd.DataFrame):
+    if "Orders_6m" not in df.columns:
+        return None
+    cust_grp = df.groupby("Customer_ID")["Orders_6m"].max()
+    if cust_grp.empty:
+        return None
+    repeat = (cust_grp >= 2).mean() * 100.0
+    return repeat
+
+
+promo_eff = compute_promo_effectiveness(f)
+repeat_rate = compute_repeat_rate(f)
+
+
+# ----------------------------------------------------
+# Layout – Title & Tabs
+# ----------------------------------------------------
 st.title("Omnichannel FMCG Dashboard")
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["Overview", "Channel & Territory", "Product & Promotion", "Customers", "Forecast"]
-)
 
-# ========== OVERVIEW ==========
-with tab1:
-    k1, k2, k3, k4 = st.columns(4)
+tabs = st.tabs(["Overview", "Channel & Territory", "Product & Promotion", "Customers", "Forecast"])
+
+# ----------------------------------------------------
+# 1. OVERVIEW TAB
+# ----------------------------------------------------
+with tabs[0]:
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
     total_rev = f["Revenue"].sum()
-    units = len(f)  # using row count as proxy for orders
+    total_units = f.get("Units", pd.Series(index=f.index, data=np.nan)).sum()
 
-    repeat_pct = None
-    if cust is not None and {"Customer_ID", "Orders"}.issubset(cust.columns):
-        total_c = len(cust)
-        repeat_c = (cust["Orders"] >= 2).sum()
-        repeat_pct = 100 * repeat_c / total_c if total_c > 0 else 0
-
-    promo_eff = None
-    if f["Promo"].nunique() > 1:
-        base = f[f["Promo"] == False]["Revenue"].mean()
-        lift = f[f["Promo"] == True]["Revenue"].mean()
-        if base and not np.isnan(base):
-            promo_eff = (lift / base - 1) * 100
-
-    k1.metric("Total Revenue", f"${total_rev:,.0f}")
-    k2.metric("Total Units (orders proxy)", f"{units:,}")
-    k3.metric("Repeat Purchase Rate", "-" if repeat_pct is None else f"{repeat_pct:.1f}%")
-    k4.metric("Promo Effectiveness", "-" if promo_eff is None else f"{promo_eff:.1f}%")
+    with kpi1:
+        st.metric("Total Revenue", f"${total_rev:,.0f}")
+    with kpi2:
+        st.metric("Total Units (orders proxy)", f"{total_units:,.0f}")
+    with kpi3:
+        if repeat_rate is not None:
+            st.metric("Repeat Purchase Rate", f"{repeat_rate:,.1f}%")
+        else:
+            st.metric("Repeat Purchase Rate", "N/A")
+    with kpi4:
+        if promo_eff is not None:
+            st.metric("Promo Effectiveness", f"{promo_eff:,.1f}%")
+        else:
+            st.metric("Promo Effectiveness", "N/A")
 
     st.markdown("---")
-    left, mid, right = st.columns([2, 1.3, 1.7])
 
-    with left:
+    # Revenue trend + Promo share + Channel share
+    top_row = st.columns([2, 1.5, 1.5])
+
+    with top_row[0]:
         st.subheader("Revenue Trend (Weekly)")
-        wk = f.groupby(pd.Grouper(key="Date", freq="W-MON"))["Revenue"].sum().reset_index()
-        st.plotly_chart(px.line(wk, x="Date", y="Revenue"), use_container_width=True)
-
-    with mid:
-        st.subheader("Promo vs Non-Promo Share")
-        promo = f.groupby("Promo")["Revenue"].sum().reset_index()
-        promo["Label"] = promo["Promo"].map({True: "Promo", False: "Non-Promo"})
-        st.plotly_chart(
-            px.pie(promo, names="Label", values="Revenue", hole=0.55),
-            use_container_width=True,
+        tr = (
+            f.groupby("Date", as_index=False)["Revenue"]
+            .sum()
+            .sort_values("Date")
         )
+        fig = px.line(tr, x="Date", y="Revenue")
+        fig.update_traces(mode="lines+markers")
+        st.plotly_chart(fig, use_container_width=True)
 
-    with right:
-        st.subheader("Channel Share (Revenue)")
-        ch_mix = (
-            f.groupby("Channel")["Revenue"]
+    with top_row[1]:
+        st.subheader("Promo vs Non-Promo Share")
+
+        promo = (
+            f.groupby("Promo")["Revenue"]
             .sum()
             .reset_index()
+        )
+
+        if promo.empty:
+            st.info("No Promo / Non-Promo data for current filters.")
+        else:
+            promo["Label"] = promo["Promo"].map({True: "Promo", False: "Non-Promo"})
+
+            # If only one class present, add a 0-value other class so the pie renders nicely
+            if promo["Label"].nunique() == 1:
+                existing = promo["Label"].iloc[0]
+                missing = "Promo" if existing == "Non-Promo" else "Non-Promo"
+                promo = pd.concat(
+                    [promo,
+                     pd.DataFrame([{"Promo": None, "Label": missing, "Revenue": 0.0}])],
+                    ignore_index=True,
+                )
+
+            fig_pie = px.pie(
+                promo,
+                names="Label",
+                values="Revenue",
+                hole=0.55,
+            )
+            fig_pie.update_layout(showlegend=True)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    with top_row[2]:
+        st.subheader("Channel Share (Revenue)")
+        ch = (
+            f.groupby("Channel", as_index=False)["Revenue"]
+            .sum()
             .sort_values("Revenue", ascending=False)
         )
-        st.plotly_chart(
-            px.bar(ch_mix, x="Revenue", y="Channel", orientation="h"),
-            use_container_width=True,
-        )
+        fig_ch = px.bar(ch, x="Revenue", y="Channel", orientation="h")
+        st.plotly_chart(fig_ch, use_container_width=True)
 
-# ========== CHANNEL & TERRITORY ==========
-with tab2:
-    c1, c2 = st.columns(2)
 
-    # --- Territory map (Singapore regions) ---
-    with c1:
-        st.subheader("Territory Revenue Map (Singapore)")
+# ----------------------------------------------------
+# 2. CHANNEL & TERRITORY TAB
+# ----------------------------------------------------
+with tabs[1]:
+    st.subheader("Territory Performance")
+
+    col_map, col_trend = st.columns([1.2, 2.0])
+
+    with col_map:
         terr = (
-            f.groupby("Territory")["Revenue"]
+            f.groupby("Territory", as_index=False)["Revenue"]
             .sum()
-            .reset_index()
+            .sort_values("Revenue", ascending=False)
         )
-
         if terr.empty:
-            st.info("No data for current filters.")
+            st.info("No data by territory for current filters.")
         else:
-            # keep only the territories that exist in geojson
-            valid_terr = {
-                feat["properties"]["Territory"]
-                for feat in SG_TERRITORY_GEOJSON["features"]
-            }
-            terr = terr[terr["Territory"].isin(valid_terr)]
+            fig_terr = px.bar(
+                terr,
+                x="Territory",
+                y="Revenue",
+                title="Revenue by Territory",
+            )
+            st.plotly_chart(fig_terr, use_container_width=True)
 
-            if terr.empty:
-                st.info("Territory names do not match map polygons.")
-            else:
-                fig_map = px.choropleth_mapbox(
-                    terr,
-                    geojson=SG_TERRITORY_GEOJSON,
-                    locations="Territory",
-                    featureidkey="properties.Territory",
-                    color="Revenue",
-                    color_continuous_scale="Reds",
-                    mapbox_style="carto-positron",
-                    zoom=10,
-                    center={"lat": 1.35, "lon": 103.82},
-                    opacity=0.7,
-                    labels={"Revenue": "Revenue (SGD)"},
-                )
-                fig_map.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                st.plotly_chart(fig_map, use_container_width=True)
-
-    # --- Channel trend ---
-    with c2:
-        st.subheader("Channel Sales Trend (Weekly)")
-        ch_w = (
-            f.groupby([pd.Grouper(key="Date", freq="W-MON"), "Channel"])["Revenue"]
+    with col_trend:
+        st.subheader("Channel Trend (Weekly)")
+        ch_wk = (
+            f.groupby(["Date", "Channel"], as_index=False)["Revenue"]
             .sum()
-            .reset_index()
+            .sort_values(["Date", "Channel"])
         )
-        if ch_w.empty:
-            st.info("No data for current filters.")
+        if ch_wk.empty:
+            st.info("No channel trend data for current filters.")
         else:
-            fig_ch = px.line(
-                ch_w,
+            fig_trend = px.line(
+                ch_wk,
                 x="Date",
                 y="Revenue",
                 color="Channel",
-                markers=True,
             )
-            st.plotly_chart(fig_ch, use_container_width=True)
+            fig_trend.update_traces(mode="lines+markers")
+            st.plotly_chart(fig_trend, use_container_width=True)
 
-# ========== PRODUCT & PROMOTION ==========
-with tab3:
-    p1, p2 = st.columns(2)
+    st.markdown("### Top 10 SKUs by Revenue")
+    top_sku = (
+        f.groupby(["SKU_ID", "Category"], as_index=False)["Revenue"]
+        .sum()
+        .sort_values("Revenue", ascending=False)
+        .head(10)
+    )
+    st.dataframe(top_sku, use_container_width=True)
 
-    with p1:
-        st.subheader("Category Revenue Treemap")
-        tre = (
-            f.groupby(["Channel", "Category"])["Revenue"]
+
+# ----------------------------------------------------
+# 3. PRODUCT & PROMOTION TAB
+# ----------------------------------------------------
+with tabs[2]:
+    st.subheader("Product & Promotion Analysis")
+
+    col_tree, col_bar = st.columns([2.0, 1.5])
+
+    with col_tree:
+        st.markdown("#### Category Revenue Treemap")
+        tree = (
+            f.groupby(["Channel", "Category"], as_index=False)["Revenue"]
             .sum()
-            .reset_index()
         )
-        if tre.empty:
-            st.info("No data for current filters.")
+        if tree.empty:
+            st.info("No product data for current filters.")
         else:
-            st.plotly_chart(
-                px.treemap(tre, path=["Channel", "Category"], values="Revenue"),
-                use_container_width=True,
+            fig_tree = px.treemap(
+                tree,
+                path=["Channel", "Category"],
+                values="Revenue",
             )
+            st.plotly_chart(fig_tree, use_container_width=True)
 
-    with p2:
-        st.subheader("Promo vs Non-Promo — Avg Revenue")
-        g = f.groupby("Promo")["Revenue"].mean().reset_index()
-        g["Promo"] = g["Promo"].map({True: "Promo", False: "Non-Promo"})
-        if g.empty:
-            st.info("No data for current filters.")
+    with col_bar:
+        st.markdown("#### Promo vs Non-Promo – Avg Revenue per Order")
+        promo_grp = f.groupby("Promo")["Revenue"].mean().reset_index()
+        if promo_grp.empty:
+            st.info("No promo data for current filters.")
         else:
-            st.plotly_chart(px.bar(g, x="Promo", y="Revenue"), use_container_width=True)
+            promo_grp["Label"] = promo_grp["Promo"].map({True: "Promo", False: "Non-Promo"})
+            fig_bar = px.bar(promo_grp, x="Label", y="Revenue")
+            st.plotly_chart(fig_bar, use_container_width=True)
 
-# ========== CUSTOMERS ==========
-with tab4:
-    st.subheader("Revenue vs Orders (Customer Segments)")
-    if cust is None or not {"Orders", "Revenue"}.issubset(cust.columns):
-        st.info("Customer summary file not found or missing columns.")
+
+# ----------------------------------------------------
+# 4. CUSTOMERS TAB
+# ----------------------------------------------------
+with tabs[3]:
+    st.subheader("Customer Segment Insights")
+
+    if cust is None:
+        st.info("Customer repeat summary file not found. Showing simple distribution from fact table.")
+        if "Orders_6m" in f.columns:
+            hist = f.groupby("Customer_ID")["Orders_6m"].max().reset_index()
+            fig_hist = px.histogram(hist, x="Orders_6m", nbins=20)
+            fig_hist.update_layout(xaxis_title="Orders per Customer (6m)", yaxis_title="Customers")
+            st.plotly_chart(fig_hist, use_container_width=True)
     else:
-        fig = px.scatter(
-            cust,
-            x="Orders",
-            y="Revenue",
-            opacity=0.45,
-            labels={"Orders": "Orders per Customer"},
+        c = cust.copy()
+        st.markdown("#### Orders vs Revenue (Customer Level)")
+        fig_scatter = px.scatter(
+            c,
+            x="Orders_6m",
+            y="Total_Revenue_6m",
+            size="Total_Units_6m",
+            color="Channels_Used",
             hover_data=["Customer_ID"],
         )
+        fig_scatter.update_layout(xaxis_title="Orders (6 months)", yaxis_title="Revenue (6 months)")
+        st.plotly_chart(fig_scatter, use_container_width=True)
 
-        # simple best-fit line using numpy (no statsmodels)
-        try:
-            x = cust["Orders"].to_numpy(dtype=float)
-            y = cust["Revenue"].to_numpy(dtype=float)
-            if len(cust) >= 3 and np.isfinite(x).all() and np.isfinite(y).all():
-                m, b = np.polyfit(x, y, 1)
-                xline = np.linspace(x.min(), x.max(), 100)
-                yline = m * xline + b
-                fig.add_trace(
-                    go.Scatter(
-                        x=xline,
-                        y=yline,
-                        mode="lines",
-                        name="Best-fit",
-                        line=dict(width=2),
-                    )
-                )
-        except Exception:
-            pass
+        st.markdown("#### Repeat Frequency Distribution")
+        fig_hist = px.histogram(c, x="Orders_6m", nbins=20)
+        fig_hist.update_layout(xaxis_title="Orders per Customer (6m)", yaxis_title="Customers")
+        st.plotly_chart(fig_hist, use_container_width=True)
 
-        med_rev = float(np.nanmedian(cust["Revenue"]))
-        fig.add_hline(
-            y=med_rev,
-            line_dash="dot",
-            annotation_text=f"Median Rev: {med_rev:,.0f}",
-        )
-        st.plotly_chart(fig, use_container_width=True)
 
-        # quick KPI table
-        kpi = pd.DataFrame(
-            {
-                "Metric": ["Customers", "Repeat %", "Median Revenue", "Mean Orders"],
-                "Value": [
-                    len(cust),
-                    f"{(cust['Orders'] >= 2).mean() * 100:.1f}%",
-                    f"${cust['Revenue'].median():,.0f}",
-                    f"{cust['Orders'].mean():.2f}",
-                ],
-            }
-        )
-        st.dataframe(kpi, use_container_width=True, hide_index=True)
+# ----------------------------------------------------
+# 5. FORECAST TAB
+# ----------------------------------------------------
+with tabs[4]:
+    st.subheader("Channel Forecast (Moving-Average)")
 
-# ========== FORECAST ==========
-with tab5:
-    st.subheader("Channel Demand Forecast (next 8 weeks)")
-    if fcast is None or fcast.empty:
-        st.info(
-            "No forecast file found. Add clean/forecast_channel_weekly.csv to enable this tab."
-        )
+    ch_all = sorted(fcast["Channel"].unique().tolist())
+    ch_sel = st.selectbox("Channel for forecast", ch_all, key="forecast_channel")
+
+    fc_ch = fcast[fcast["Channel"] == ch_sel].copy()
+    if fc_ch.empty:
+        st.info("No forecast data for this channel.")
     else:
-        fc = fcast.copy()
-        if channels:
-            fc = fc[fc["Channel"].isin(channels)]
+        # Show last 26 weeks
+        fc_ch = fc_ch.sort_values("Date").tail(26)
 
-        if fc.empty:
-            st.info("No channels available for current filters.")
-        else:
-            ch_pick = st.selectbox("Channel", sorted(fc["Channel"].unique()), key="fc_pick")
-            fc1 = fc[fc["Channel"] == ch_pick].sort_values("Date")
+        fig_fc = go.Figure()
+        fig_fc.add_trace(go.Scatter(
+            x=fc_ch["Date"],
+            y=fc_ch["Revenue"],
+            mode="lines+markers",
+            name="Actual Revenue",
+        ))
+        fig_fc.add_trace(go.Scatter(
+            x=fc_ch["Date"],
+            y=fc_ch["yhat"],
+            mode="lines",
+            name="Moving-Avg Forecast",
+        ))
+        fig_fc.add_trace(go.Scatter(
+            x=pd.concat([fc_ch["Date"], fc_ch["Date"][::-1]]),
+            y=pd.concat([fc_ch["yhat_upper"], fc_ch["yhat_lower"][::-1]]),
+            fill="toself",
+            mode="lines",
+            line=dict(width=0),
+            opacity=0.2,
+            name="Forecast band",
+        ))
+        fig_fc.update_layout(
+            xaxis_title="Week",
+            yaxis_title="Revenue",
+        )
+        st.plotly_chart(fig_fc, use_container_width=True)
 
-            fig = go.Figure()
+        st.markdown(
+            "Forecast is based on a simple 4-week moving average per channel. "
+            "For production use, this can be upgraded to ARIMA/Prophet."
+        )
 
-            # history from filtered fact
-            hist = (
-                f[f["Channel"] == ch_pick]
-                .groupby(pd.Grouper(key="Date", freq="W-MON"))["Revenue"]
-                .sum()
-                .reset_index()
-            )
-            if len(hist):
-                fig.add_trace(
-                    go.Scatter(
-                        x=hist["Date"],
-                        y=hist["Revenue"],
-                        name="Actual",
-                        mode="lines+markers",
-                    )
-                )
-
-            if {"yhat", "yhat_lower", "yhat_upper"}.issubset(fc1.columns):
-                fig.add_trace(
-                    go.Scatter(
-                        x=fc1["Date"],
-                        y=fc1["yhat"],
-                        name="Forecast",
-                        mode="lines",
-                    )
-                )
-                fig.add_trace(
-                    go.Scatter(
-                        x=pd.concat([fc1["Date"], fc1["Date"][::-1]]),
-                        y=pd.concat([fc1["yhat_upper"], fc1["yhat_lower"][::-1]]),
-                        fill="toself",
-                        name="Confidence",
-                        mode="lines",
-                        line=dict(width=0),
-                    )
-                )
-
-            fig.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Revenue",
-                legend_title="Series",
-                margin=dict(l=10, r=10, t=10, b=10),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+# ----------------------------------------------------
+# Footer
+# ----------------------------------------------------
+st.caption("Prepared by Derrick Wong | Graduate NTUC LearningHub Associate Data Analyst Course (Cohort 36) 2025")
