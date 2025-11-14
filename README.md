@@ -74,7 +74,7 @@ Python • Pandas • NumPy • Plotly • Streamlit • Scikit‑Learn • Prop
 ---
 
 ## 📊 Dashboard Preview  
-![Dashboard Overview](presentation/dashboard_overview.png)
+![Dashboard Overview](Presentation/dashboard_overview.png)
 
 ---
 
