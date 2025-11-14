@@ -181,20 +181,21 @@ with tab1:
 with tab2:
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("Territory Heatmap")
-        terr = f.groupby("Territory")["Revenue"].sum().reset_index()
-        fig = px.density_heatmap(terr, x="Territory", y=["Revenue"] * len(terr), z="Revenue",
-                                 color_continuous_scale="Reds")
-        fig.update_yaxes(visible=False, showticklabels=False)
+        with c1:
+    st.subheader("Territory Heatmap")
+    terr = f.groupby("Territory")["Revenue"].sum().reset_index().sort_values("Revenue", ascending=False)
+    if terr.empty:
+        st.info("No data for current filters.")
+    else:
+        fig = px.bar(
+            terr, x="Revenue", y="Territory",
+            orientation="h", color="Revenue",
+            color_continuous_scale="Reds",
+            labels={"Revenue": "Revenue", "Territory": "Territory"},
+            title=None
+        )
+        fig.update_layout(coloraxis_showscale=True, margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        st.subheader("Channel Trend (Weekly)")
-        ch_w = f.groupby([pd.Grouper(key="Date", freq="W-MON"), "Channel"])["Revenue"].sum().reset_index()
-        st.plotly_chart(px.line(ch_w, x="Date", y="Revenue", color="Channel"), use_container_width=True)
-
-    st.subheader("Top 10 Categories by Revenue")
-    cat = f.groupby("Category")["Revenue"].sum().reset_index().sort_values("Revenue", ascending=False).head(10)
-    st.plotly_chart(px.bar(cat, x="Category", y="Revenue"), use_container_width=True)
 
 # ========== PRODUCT & PROMOTION ==========
 with tab3:
