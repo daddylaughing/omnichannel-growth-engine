@@ -181,7 +181,6 @@ with tab1:
 with tab2:
     c1, c2 = st.columns(2)
     with c1:
-        with c1:
     st.subheader("Territory Heatmap")
     terr = f.groupby("Territory")["Revenue"].sum().reset_index().sort_values("Revenue", ascending=False)
     if terr.empty:
@@ -196,6 +195,7 @@ with tab2:
         )
         fig.update_layout(coloraxis_showscale=True, margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
+
 
 # ========== PRODUCT & PROMOTION ==========
 with tab3:
